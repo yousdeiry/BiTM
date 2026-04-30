@@ -1252,17 +1252,19 @@ Write-Host "`n==========================================================" -Foreg
 Write-Host " HardeningKitty                                           " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-$hkScript    = "$PSScriptRoot\Invoke-HardeningKitty.ps1"
-$hkListDir   = "$PSScriptRoot\list"
+$hkScript    = "$PSScriptRoot\HardeningKitty.psm1"
+$hkListDir   = "$PSScriptRoot\lists"
 $hkResultDir = "$PSScriptRoot\Result_HardeningKitty_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 
 New-Item -ItemType Directory -Path $hkResultDir -Force | Out-Null
 
 if (-Not (Test-Path $hkScript)) {
-    Write-Host "  [ERREUR] Invoke-HardeningKitty.ps1 introuvable dans $PSScriptRoot" -ForegroundColor Red
+    Write-Host "  [ERREUR] HardeningKitty.psm1 introuvable dans $PSScriptRoot" -ForegroundColor Red
 } elseif (-Not (Test-Path $hkListDir)) {
-    Write-Host "  [ERREUR] Dossier 'list' introuvable dans $PSScriptRoot" -ForegroundColor Red
+    Write-Host "  [ERREUR] Dossier 'lists' introuvable dans $PSScriptRoot" -ForegroundColor Red
 } else {
+    Import-Module "$hkScript" -Force
+
     $findingLists = Get-ChildItem -Path $hkListDir -Filter "*.csv" -File
 
     if ($findingLists.Count -eq 0) {
@@ -1273,7 +1275,7 @@ if (-Not (Test-Path $hkScript)) {
 
             $outResult = "$hkResultDir\${listName}_audit.csv"
             Write-Host "  Audit avec $($list.Name)..." -ForegroundColor Yellow
-            & $hkScript -Mode Audit -FileFindingList $list.FullName -SkipMachineInformation -Log -Report -ReportFile $outResult
+            Invoke-HardeningKitty -Mode Audit -FileFindingList $list.FullName -SkipMachineInformation -Log -Report -ReportFile $outResult
             if (Test-Path $outResult) {
                 Write-Host "    [OK] $outResult" -ForegroundColor Green
             } else {
