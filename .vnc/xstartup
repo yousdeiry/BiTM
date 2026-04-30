@@ -1,0 +1,20 @@
+#!/bin/bash
+
+exec > /tmp/vnc-startup.log 2>&1
+
+export DISPLAY=:1
+export HOME=/root
+
+xset s off
+xset -dpms
+xset s noblank
+fluxbox &
+sleep 3
+chromium-browser \
+	--no-sandbox \
+	--start-maximized \
+	--no-first-run \
+	https://www.google.com &
+echo "initizalisatio nterminé"
+
+wait
