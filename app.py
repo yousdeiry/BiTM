@@ -1,316 +1,301 @@
-from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify
-import pyotp
-import secrets
-from datetime import datetime
+require('dotenv').config();
+const express = require('express');
+const session = require('express-session');
+const msal = require('@azure/msal-node');
+const cookieParser = require('cookie-parser');
 
-app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-# Base de données simulée
-users_db = {
-    'alice@company.com': {
-        'password': 'Password123!',
-        'totp_secret': pyotp.random_base32(),  # Secret TOTP
-        'name': 'Alice'
+// Configuration MSAL
+const msalConfig = {
+    auth: {
+        clientId: process.env.CLIENT_ID,
+        authority: `https://login.microsoftonline.com/${process.env.TENANT_ID}`,
+        clientSecret: process.env.CLIENT_SECRET
+    },
+    system: {
+        loggerOptions: {
+            loggerCallback(loglevel, message, containsPii) {
+                console.log(message);
+            },
+            piiLoggingEnabled: false,
+            logLevel: msal.LogLevel.Verbose,
+        }
     }
-}
+};
 
-# Template de login AVEC XSS VULNERABLE
-LOGIN_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>SecureApp - Login</title>
-    <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial; 
-            max-width: 400px; 
-            margin: 100px auto; 
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 { 
-            color: #333; 
-            font-size: 24px;
-            margin-bottom: 30px;
-        }
-        input { 
-            width: 100%; 
-            padding: 12px; 
-            margin: 10px 0; 
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button { 
-            width: 100%; 
-            padding: 12px; 
-            background: #0066cc; 
-            color: white; 
-            border: none; 
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-        button:hover {
-            background: #0052a3;
-        }
-        .error { 
-            color: #d93025; 
-            padding: 10px; 
-            background: #fce8e6; 
-            border-radius: 4px;
-            margin: 10px 0; 
-        }
-        .totp-step {
-            display: none;
-        }
-        .totp-step.active {
-            display: block;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔒 SecureApp Login</h1>
-        
-        <!-- XSS VULNERABLE - DEBUG PANEL -->
-        <div style="border: 2px dashed red; padding: 10px; margin-bottom: 20px; font-size: 12px; background: #fff3cd;">
-            <strong style="color: red;">⚠️ DEBUG MODE (XSS Vulnerable)</strong><br>
-            Debug Data: {{ debug_data|safe }}
-        </div>
-        
-        <!-- Step 1: Username + Password -->
-        <div id="step1" class="step active">
-            <form id="loginForm">
-                <input type="email" id="username" placeholder="Email" required value="alice@company.com">
-                <input type="password" id="password" placeholder="Password" required value="Password123!">
-                <button type="submit">Continue</button>
-            </form>
-        </div>
-        
-        <!-- Step 2: TOTP Code -->
-        <div id="step2" class="totp-step">
-            <p style="color: #666; margin-bottom: 20px;">
-                Enter the 6-digit code from your authenticator app
-            </p>
-            <form id="totpForm">
-                <input type="text" id="totp_code" placeholder="000000" maxlength="6" required pattern="[0-9]{6}">
-                <button type="submit">Verify</button>
-            </form>
-        </div>
-        
-        <div id="message"></div>
-    </div>
-    
-    <script>
-        // Step 1: Login with username + password
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            const res = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password})
-            });
-            
-            const data = await res.json();
-            
-            if (data.status === 'totp_required') {
-                document.getElementById('step1').classList.remove('active');
-                document.getElementById('step2').classList.add('active');
-            } else {
-                document.getElementById('message').innerHTML = '<div class="error">Invalid credentials</div>';
-            }
-        });
-        
-        // Step 2: Verify TOTP
-        document.getElementById('totpForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const totp_code = document.getElementById('totp_code').value;
-            
-            const res = await fetch('/api/auth/verify-totp', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({totp_code})
-            });
-            
-            const data = await res.json();
-            
-            if (data.status === 'success') {
-                window.location.href = '/dashboard';
-            } else {
-                document.getElementById('message').innerHTML = '<div class="error">Invalid code</div>';
-            }
-        });
-    </script>
-</body>
-</html>
-"""
+const pca = new msal.ConfidentialClientApplication(msalConfig);
 
-DASHBOARD_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard - SecureApp</title>
-    <style>
-        body { 
-            font-family: Arial; 
-            max-width: 800px; 
-            margin: 50px auto; 
-            padding: 20px;
-        }
-        .success { 
-            color: #0f9d58; 
-            font-size: 24px; 
-            margin-bottom: 20px;
-        }
-        .info {
-            background: #e8f0fe;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-    </style>
-</head>
-<body>
-    <h1>✅ Welcome, {{ name }}!</h1>
-    <p class="success">Authentication successful!</p>
-    
-    <div class="info">
-        <h3>Session Info:</h3>
-        <p><strong>User:</strong> {{ username }}</p>
-        <p><strong>Login Time:</strong> {{ login_time }}</p>
-        <p><strong>Session ID:</strong> {{ session_id }}</p>
-    </div>
-    
-    <p>
-        <a href="/logout">Logout</a>
-    </p>
-</body>
-</html>
-"""
+// Middleware
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-# Routes
-@app.route('/')
-def index():
-    # XSS VULNERABLE - Pas de sanitization du paramètre 'debug'
-    debug_data = request.args.get('debug', '')
-    return render_template_string(LOGIN_TEMPLATE, debug_data=debug_data)
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // true en production avec HTTPS
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60 // 1 heure
+    }
+}));
 
-@app.route('/api/auth/login', methods=['POST'])
-def login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    user = users_db.get(username)
-    
-    if user and user['password'] == password:
-        session['username'] = username
-        session['totp_verified'] = False
-        return jsonify({'status': 'totp_required'})
-    
-    return jsonify({'status': 'error'}), 401
+// ==================== ROUTES ====================
 
-@app.route('/api/auth/verify-totp', methods=['POST'])
-def verify_totp():
-    data = request.json
-    totp_code = data.get('totp_code')
+// Page d'accueil avec XSS VULNERABLE
+app.get('/', (req, res) => {
+    // XSS VULNERABLE - Paramètre 'debug' non sanitisé
+    const debugData = req.query.debug || '';
     
-    username = session.get('username')
-    if not username:
-        return jsonify({'status': 'error', 'message': 'No session'}), 401
-    
-    user = users_db[username]
-    totp = pyotp.TOTP(user['totp_secret'])
-    
-    if totp.verify(totp_code, valid_window=1):
-        session['totp_verified'] = True
-        session['login_time'] = datetime.now().isoformat()
-        return jsonify({'status': 'success'})
-    
-    return jsonify({'status': 'error', 'message': 'Invalid code'}), 401
-
-@app.route('/dashboard')
-def dashboard():
-    if not session.get('totp_verified'):
-        return redirect('/')
-    
-    username = session.get('username')
-    user = users_db[username]
-    
-    return render_template_string(DASHBOARD_TEMPLATE,
-        username=username,
-        name=user['name'],
-        login_time=session.get('login_time'),
-        session_id=session.sid if hasattr(session, 'sid') else 'N/A'
-    )
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect('/')
-
-# Route pour afficher le QR code TOTP (setup)
-@app.route('/setup-totp/<username>')
-def setup_totp(username):
-    if username not in users_db:
-        return "User not found", 404
-    
-    user = users_db[username]
-    totp = pyotp.TOTP(user['totp_secret'])
-    provisioning_uri = totp.provisioning_uri(
-        name=username,
-        issuer_name='SecureApp'
-    )
-    
-    import qrcode
-    import io
-    import base64
-    
-    qr = qrcode.make(provisioning_uri)
-    buf = io.BytesIO()
-    qr.save(buf, format='PNG')
-    buf.seek(0)
-    qr_base64 = base64.b64encode(buf.read()).decode()
-    
-    return f"""
+    const html = `
+    <!DOCTYPE html>
     <html>
-    <head><title>Setup TOTP - {username}</title></head>
-    <body style="font-family: Arial; max-width: 600px; margin: 50px auto; text-align: center;">
-        <h1>Setup Two-Factor Authentication</h1>
-        <p>Scan this QR code with Google Authenticator or any TOTP app:</p>
-        <img src="data:image/png;base64,{qr_base64}" style="max-width: 300px;">
-        <p><strong>Or enter this secret manually:</strong></p>
-        <code style="background: #f5f5f5; padding: 10px; display: block; margin: 20px 0;">{user['totp_secret']}</code>
-        <p><a href="/">Go to Login</a></p>
+    <head>
+        <title>SecureApp - Sign In</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            .container {
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                max-width: 400px;
+                width: 100%;
+            }
+            h1 {
+                color: #333;
+                margin-bottom: 10px;
+                font-size: 28px;
+            }
+            .subtitle {
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            .btn-microsoft {
+                width: 100%;
+                padding: 15px;
+                background: #2f2f2f;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-decoration: none;
+                transition: background 0.3s;
+            }
+            .btn-microsoft:hover {
+                background: #1a1a1a;
+            }
+            .ms-icon {
+                width: 20px;
+                height: 20px;
+                margin-right: 10px;
+            }
+            .debug-panel {
+                border: 2px dashed red;
+                padding: 10px;
+                margin-bottom: 20px;
+                background: #fff3cd;
+                font-size: 12px;
+                border-radius: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔒 SecureApp</h1>
+            <p class="subtitle">Secure Access Portal</p>
+            
+            <!-- XSS VULNERABLE DEBUG PANEL -->
+            ${debugData ? `
+            <div class="debug-panel">
+                <strong style="color: red;">⚠️ DEBUG MODE</strong><br>
+                Debug: ${debugData}
+            </div>
+            ` : ''}
+            
+            <a href="/auth/signin" class="btn-microsoft">
+                <svg class="ms-icon" viewBox="0 0 23 23">
+                    <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                    <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                    <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                    <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+                </svg>
+                Sign in with Microsoft
+            </a>
+            
+            <p style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+                Protected by Microsoft MFA
+            </p>
+        </div>
     </body>
     </html>
-    """
-
-if __name__ == '__main__':
-    # Afficher les secrets TOTP au démarrage
-    print("\n" + "="*60)
-    print("  RP-TOTP Application Started")
-    print("="*60)
-    print("\nSetup TOTP for users:")
-    for username, user in users_db.items():
-        print(f"\n  User: {username}")
-        print(f"  Password: {user['password']}")
-        print(f"  TOTP Secret: {user['totp_secret']}")
-        print(f"  Setup URL: http://192.168.100.20:5000/setup-totp/{username}")
-    print("\n" + "="*60 + "\n")
+    `;
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    res.send(html);
+});
+
+// Initier la connexion Microsoft
+app.get('/auth/signin', (req, res) => {
+    const authCodeUrlParameters = {
+        scopes: ['user.read', 'openid', 'profile', 'email'],
+        redirectUri: process.env.REDIRECT_URI,
+    };
+
+    pca.getAuthCodeUrl(authCodeUrlParameters).then((response) => {
+        res.redirect(response);
+    }).catch((error) => {
+        console.error(error);
+        res.status(500).send('Error initiating authentication');
+    });
+});
+
+// Callback après authentification Microsoft
+app.get('/auth/redirect', (req, res) => {
+    const tokenRequest = {
+        code: req.query.code,
+        scopes: ['user.read', 'openid', 'profile', 'email'],
+        redirectUri: process.env.REDIRECT_URI,
+    };
+
+    pca.acquireTokenByCode(tokenRequest).then((response) => {
+        // Stocker les infos utilisateur en session
+        req.session.isAuthenticated = true;
+        req.session.account = response.account;
+        req.session.accessToken = response.accessToken;
+        
+        console.log('[AUTH] User authenticated:', response.account.username);
+        
+        res.redirect('/dashboard');
+    }).catch((error) => {
+        console.error('[AUTH] Error:', error);
+        res.status(500).send('Authentication failed');
+    });
+});
+
+// Dashboard (page protégée)
+app.get('/dashboard', (req, res) => {
+    if (!req.session.isAuthenticated) {
+        return res.redirect('/');
+    }
+    
+    const account = req.session.account;
+    
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Dashboard - SecureApp</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 0;
+                background: #f5f5f5;
+            }
+            .header {
+                background: white;
+                padding: 20px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 40px auto;
+                padding: 0 20px;
+            }
+            .welcome-card {
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+            }
+            .info-card {
+                background: #e8f5e9;
+                padding: 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+            }
+            .btn-logout {
+                background: #d32f2f;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                text-decoration: none;
+            }
+            .success-icon {
+                font-size: 48px;
+                margin-bottom: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div>
+                <strong>SecureApp</strong>
+            </div>
+            <a href="/auth/signout" class="btn-logout">Sign Out</a>
+        </div>
+        
+        <div class="container">
+            <div class="welcome-card">
+                <div class="success-icon">✅</div>
+                <h1>Welcome, ${account.name}!</h1>
+                <p style="color: #666;">You have successfully authenticated with Microsoft MFA.</p>
+            </div>
+            
+            <div class="info-card">
+                <h3>Session Information</h3>
+                <p><strong>Username:</strong> ${account.username}</p>
+                <p><strong>Name:</strong> ${account.name}</p>
+                <p><strong>Tenant ID:</strong> ${account.tenantId}</p>
+                <p><strong>Home Account ID:</strong> ${account.homeAccountId}</p>
+                <p><strong>Login Time:</strong> ${new Date().toISOString()}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+    
+    res.send(html);
+});
+
+// Déconnexion
+app.get('/auth/signout', (req, res) => {
+    const logoutUri = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/logout`;
+    
+    req.session.destroy(() => {
+        res.redirect(logoutUri);
+    });
+});
+
+// Démarrage serveur
+app.listen(PORT, '0.0.0.0', () => {
+    console.log('\n' + '='.repeat(60));
+    console.log('  Entra ID Demo App Started');
+    console.log('='.repeat(60));
+    console.log(`  App URL:         http://192.168.100.20:${PORT}`);
+    console.log(`  XSS Test URL:    http://192.168.100.20:${PORT}/?debug=<test>`);
+    console.log('='.repeat(60) + '\n');
+});
